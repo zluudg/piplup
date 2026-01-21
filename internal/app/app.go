@@ -96,6 +96,7 @@ func (a *application) ServeDNS(w miekg.ResponseWriter, r *miekg.Msg) {
 	resp.Answer = upResp.Answer
 	resp.Ns = upResp.Ns
 	resp.Extra = upResp.Extra
+	resp.MsgHdr.Rcode = upResp.MsgHdr.Rcode
     if a.toInject != nil {
 	    resp.Extra = append(resp.Extra, a.toInject)
     }
