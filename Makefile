@@ -19,7 +19,7 @@ build: outdir
 	go build -v -ldflags "-X 'main.version=$(VERSION)' -X 'main.commit=$(COMMIT)'" -o $(OUT)/ ./cmd/...
 
 install:
-	test -z "$(DESTDIR)" && $(INSTALL) $(OUT)/$(PROG) $(DEFAULT_INSTALLDIR) || $(INSTALL) $(OUT)/$(PROG) $(DESTDIR)$(prefix)/bin/
+	test -z "$(DESTDIR)" && $(INSTALL) $(OUT)/$(NAME) $(DEFAULT_INSTALLDIR) || $(INSTALL) $(OUT)/$(NAME) $(DESTDIR)$(prefix)/bin/
 
 outdir:
 	-mkdir -p $(OUT)
