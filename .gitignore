@@ -1,0 +1,21 @@
+# Ignore random backed up files
+*.bak
+
+# Don't commit build artifacts
+out/
+
+# Ignore stray configuration files
+config.json
+
+# Ignore integration test folders, except a select few files
+itests/sut/*
+!itests/sut/**
+!itests/sut/docker-compose.yaml
+!itests/sut/piplup/config.json
+
+# Ignore vim buffer files
+*.swp
+*.swo
+
+# Ignore COMMIT file used for tarballs
+COMMIT
