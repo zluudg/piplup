@@ -15,7 +15,8 @@ type application struct {
 	log         common.Logger
 	id          string
 	address     string
-	port        string
+	udpPort     string
+	tlsPort     string
 	upstream    string
 	toInject    miekg.RR
     certDir     string
@@ -29,7 +30,7 @@ func (a *application) Run(ctx context.Context, exitCh chan<- common.Exit) {
 
 	go func() {
         err := miekg.ListenAndServe(
-        net.JoinHostPort(a.address, a.port),
+        net.JoinHostPort(a.address, a.udpPort),
 		"udp4",
 		a)
         if err != nil {
@@ -41,7 +42,7 @@ func (a *application) Run(ctx context.Context, exitCh chan<- common.Exit) {
 
     go func() {
         err := miekg.ListenAndServeTLS(
-        net.JoinHostPort(a.address, a.port),
+        net.JoinHostPort(a.address, a.tlsPort),
 		filepath.Join(a.certDir, "tls.crt"),
 		filepath.Join(a.certDir, "tls.key"),
 		a)

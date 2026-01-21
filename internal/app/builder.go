@@ -30,8 +30,13 @@ func (b *builder) Address(addr string) *builder {
 	return b
 }
 
-func (b *builder) Port(port string) *builder {
-	b.newApp.port = port
+func (b *builder) UdpPort(port string) *builder {
+	b.newApp.udpPort = port
+	return b
+}
+
+func (b *builder) TlsPort(port string) *builder {
+	b.newApp.tlsPort = port
 	return b
 }
 
@@ -73,7 +78,7 @@ func (b *builder) Build() (*application, error) {
 		return nil, errors.New("bad address when creating application")
 	}
 
-	if b.newApp.port == "" {
+	if b.newApp.udpPort == "" {
 		return nil, errors.New("bad port when creating application")
 	}
 

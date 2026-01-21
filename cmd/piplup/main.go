@@ -22,7 +22,8 @@ var commit = "BAD-BUILD"
 
 type conf struct {
 	Address         string   `json:"address"`
-	Port            string   `json:"port"`
+	UdpPort         string   `json:"udp_port"`
+	TlsPort         string   `json:"tls_port"`
 	UpstreamAddress string   `json:"upstream_address"`
 	UpstreamPort    string   `json:"upstream_port"`
 	Inject          string   `json:"inject"`
@@ -92,7 +93,8 @@ func main() {
 	application, err := app.NewBuilder().
 		Logger(log).
 		Address(mainConf.Address).
-		Port(mainConf.Port).
+		UdpPort(mainConf.UdpPort).
+		TlsPort(mainConf.TlsPort).
         Upstream(mainConf.UpstreamAddress, mainConf.UpstreamPort).
 		CertDir(mainConf.CertDir).
 		MatchSuffix(mainConf.MatchSuffix).
