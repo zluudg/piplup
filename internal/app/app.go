@@ -72,8 +72,9 @@ func (a *application) ServeDNS(w miekg.ResponseWriter, r *miekg.Msg) {
 	resp.MsgHdr.Opcode = miekg.OpcodeQuery
 	resp.MsgHdr.Authoritative = true
 	resp.MsgHdr.Rcode = miekg.RcodeRefused
-	if !strings.HasSuffix(r.Question[0].Name, a.matchSuffix) {
-		a.log.Debug("Query for %s, won't proxy", r.Question[0].Name)
+    qLowerCase := strings.ToLower(r.Question[0].Name)
+	if !strings.HasSuffix(qLowerCase, a.matchSuffix) {
+		a.log.Debug("Query did not match filter, won't proxy", qLowerCase)
 		err = w.WriteMsg(resp)
 		if err != nil {
 			a.log.Error("Error responding: %s", err)
