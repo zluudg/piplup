@@ -95,7 +95,7 @@ func main() {
 		Address(mainConf.Address).
 		UdpPort(mainConf.UdpPort).
 		TlsPort(mainConf.TlsPort).
-        Upstream(mainConf.UpstreamAddress, mainConf.UpstreamPort).
+		Upstream(mainConf.UpstreamAddress, mainConf.UpstreamPort).
 		CertDir(mainConf.CertDir).
 		MatchSuffix(mainConf.MatchSuffix).
 		Inject(mainConf.Inject).

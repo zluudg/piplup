@@ -2,7 +2,7 @@ package app
 
 import (
 	"errors"
-    "net"
+	"net"
 
 	miekg "github.com/miekg/dns"
 
@@ -64,7 +64,6 @@ func (b *builder) CertDir(path string) *builder {
 	return b
 }
 
-
 func (b *builder) Build() (*application, error) {
 	if b.newApp == nil {
 		return nil, errors.New("builder used up")
@@ -82,7 +81,7 @@ func (b *builder) Build() (*application, error) {
 		return nil, errors.New("bad port when creating application")
 	}
 
-    // TODO check more
+	// TODO check more
 
 	newApp := b.newApp
 	b.newApp = nil

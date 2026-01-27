@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-    "net"
+	"net"
 	"path/filepath"
 	"strings"
 
@@ -19,7 +19,7 @@ type application struct {
 	tlsPort     string
 	upstream    string
 	toInject    miekg.RR
-    certDir     string
+	certDir     string
 	matchSuffix string
 	exitCh      chan<- common.Exit
 }
@@ -29,33 +29,33 @@ func (a *application) Run(ctx context.Context, exitCh chan<- common.Exit) {
 	a.exitCh = exitCh
 
 	go func() {
-        err := miekg.ListenAndServe(
-        net.JoinHostPort(a.address, a.udpPort),
-		"udp4",
-		a)
-        if err != nil {
-            a.log.Error("UDP listener exited with error: %s", err)
-        }
-    }()
+		err := miekg.ListenAndServe(
+			net.JoinHostPort(a.address, a.udpPort),
+			"udp4",
+			a)
+		if err != nil {
+			a.log.Error("UDP listener exited with error: %s", err)
+		}
+	}()
 
-    a.log.Info("Started UDP Listener")
+	a.log.Info("Started UDP Listener")
 
-    go func() {
-        err := miekg.ListenAndServeTLS(
-        net.JoinHostPort(a.address, a.tlsPort),
-		filepath.Join(a.certDir, "tls.crt"),
-		filepath.Join(a.certDir, "tls.key"),
-		a)
-        if err != nil {
-            a.log.Error("UDP listener exited with error: %s", err)
-        }
-    }()
+	go func() {
+		err := miekg.ListenAndServeTLS(
+			net.JoinHostPort(a.address, a.tlsPort),
+			filepath.Join(a.certDir, "tls.crt"),
+			filepath.Join(a.certDir, "tls.key"),
+			a)
+		if err != nil {
+			a.log.Error("UDP listener exited with error: %s", err)
+		}
+	}()
 
-    a.log.Info("Started TLS Listener")
+	a.log.Info("Started TLS Listener")
 
-    <- ctx.Done()
+	<-ctx.Done()
 
-    a.log.Info("Leaving main routine")
+	a.log.Info("Leaving main routine")
 
 	a.exitCh <- common.Exit{ID: a.id, Err: nil}
 
@@ -72,9 +72,9 @@ func (a *application) ServeDNS(w miekg.ResponseWriter, r *miekg.Msg) {
 	resp.MsgHdr.Opcode = miekg.OpcodeQuery
 	resp.MsgHdr.Authoritative = true
 	resp.MsgHdr.Rcode = miekg.RcodeRefused
-    qLowerCase := strings.ToLower(r.Question[0].Name)
+	qLowerCase := strings.ToLower(r.Question[0].Name)
 	if !strings.HasSuffix(qLowerCase, a.matchSuffix) {
-		a.log.Debug("Query did not match filter, won't proxy", qLowerCase)
+		a.log.Debug("Query did not match filter, won't proxy")
 		err = w.WriteMsg(resp)
 		if err != nil {
 			a.log.Error("Error responding: %s", err)
@@ -99,9 +99,9 @@ func (a *application) ServeDNS(w miekg.ResponseWriter, r *miekg.Msg) {
 	resp.Ns = upResp.Ns
 	resp.Extra = upResp.Extra
 	resp.MsgHdr.Rcode = upResp.MsgHdr.Rcode
-    if a.toInject != nil {
-	    resp.Extra = append(resp.Extra, a.toInject)
-    }
+	if a.toInject != nil {
+		resp.Extra = append(resp.Extra, a.toInject)
+	}
 
 	err = w.WriteMsg(resp)
 	if err != nil {
