@@ -1,16 +1,35 @@
 # Example Configuration
 ```json
 {
-    "address": "127.0.0.1",
-    "port": "5353",
-    "upstream_address": "127.0.0.1",
+    "debug": false,
+    "address": "192.0.2.1",
+    "udp_port": "53",
+    "tls_port": "853",
+    "upstream_address": "9.9.9.9",
     "upstream_port": "53",
-    "inject": "inject.something.xa. IN TXT \"Hello!\"",
-    "match_suffix": "something.xa.",
-    "cert_dir": "/path/to/cert/and/key",
-    "api":
+    "upstream_transport": "udp4",
+    "cert":
     {
-        "active": false
-    }
+        "debug": true,
+        "active": true,
+        "interval": 3600,
+        "key": "/path/to/key.pem",
+        "cert": "/path/to/cert.pem"
+    },
+    "matches":
+    [
+        {
+            "qname": ".*example.org.",
+            "qtype": "NS",
+            "match_outgoing": false,
+            "action": "action1"
+        },
+        {
+            "qname": "example.com.",
+            "qtype": "AAAA",
+            "match_outgoing": true,
+            "action": "action2"
+        }
+    ]
 }
 ```

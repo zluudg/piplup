@@ -7,18 +7,20 @@ import (
 
 	miekg "codeberg.org/miekg/dns"
 
+	"git.zluudg.se/piplup/internal/app/match"
 	"git.zluudg.se/piplup/internal/common"
 	"git.zluudg.se/piplup/internal/logger"
 )
 
 type Conf struct {
-	Debug             bool   `json:"debug"`
-	Address           string `json:"address"`
-	UdpPort           string `json:"udp_port"`
-	TlsPort           string `json:"tls_port"`
-	UpstreamAddress   string `json:"upstream_address"`
-	UpstreamPort      string `json:"upstream_port"`
-	UpstreamTransport string `json:"upstream_transport"`
+	Debug             bool         `json:"debug"`
+	Address           string       `json:"address"`
+	UdpPort           string       `json:"udp_port"`
+	TlsPort           string       `json:"tls_port"`
+	UpstreamAddress   string       `json:"upstream_address"`
+	UpstreamPort      string       `json:"upstream_port"`
+	UpstreamTransport string       `json:"upstream_transport"`
+	Matches           []match.Conf `json:"matches"`
 	Log               common.Logger
 	Cert              common.CertHandler
 }
@@ -33,6 +35,8 @@ type appHandle struct {
 	upstreamAddress   string
 	upstreamPort      string
 	upstreamTransport string
+	matchIncoming     []*match.Match
+	matchOutgoing     []*match.Match
 }
 
 func Create(c Conf) (*appHandle, error) {
@@ -92,6 +96,24 @@ func Create(c Conf) (*appHandle, error) {
 	}
 	a.upstreamTransport = c.UpstreamTransport
 
+	a.matchIncoming = make([]*match.Match, 0)
+	a.matchOutgoing = make([]*match.Match, 0)
+	for _, mconf := range c.Matches {
+		// TODO check consistency with action ID's and Valid qtypes
+		m, err := match.Create(mconf)
+		if err != nil {
+			a.log.Error("Could not create match object '%s/%s'", *mconf.Qname, *mconf.Qtype)
+		}
+		if mconf.Outgoing {
+			a.matchOutgoing = append(a.matchOutgoing, m)
+		} else {
+			a.matchIncoming = append(a.matchIncoming, m)
+		}
+	}
+
+	a.log.Info("%d incoming match patterns configured", len(a.matchIncoming))
+	a.log.Info("%d outgoing match patterns configured", len(a.matchOutgoing))
+
 	return a, nil
 }
 
@@ -143,6 +165,14 @@ func (a *appHandle) Run(ctx context.Context, exitCh chan<- common.Exit) {
 func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *miekg.Msg) {
 	a.log.Debug("Query for %s incoming", r.Question[0].Header().Name)
 	var err error
+
+	for _, m := range a.matchIncoming {
+		if m.IsMatch(r) {
+			a.log.Info("Matched incoming pattern %s", m.String()) // TODO remove
+			break
+		}
+	}
+
 	resp := new(miekg.Msg)
 	resp.Question = r.Question
 	resp.MsgHeader.ID = r.MsgHeader.ID
@@ -150,15 +180,6 @@ func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *mie
 	resp.MsgHeader.Opcode = miekg.OpcodeQuery
 	resp.MsgHeader.Authoritative = true
 	resp.MsgHeader.Rcode = miekg.RcodeRefused
-
-	if false {
-		a.log.Debug("Query did not match filter, won't proxy")
-		_, err = resp.WriteTo(w)
-		if err != nil {
-			a.log.Error("Error responding: %s", err)
-		}
-		return
-	}
 
 	newQ := r
 	upResp, err := miekg.Exchange(ctx, newQ, a.upstreamTransport, net.JoinHostPort(a.upstreamAddress, a.upstreamPort))
@@ -177,6 +198,13 @@ func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *mie
 	resp.Ns = upResp.Ns
 	resp.Extra = upResp.Extra
 	resp.MsgHeader.Rcode = upResp.MsgHeader.Rcode
+
+	for _, m := range a.matchOutgoing {
+		if m.IsMatch(upResp) {
+			a.log.Info("Matched outgoing pattern %s", m.String()) // TODO remove
+			break
+		}
+	}
 
 	_, err = resp.WriteTo(w)
 	if err != nil {
