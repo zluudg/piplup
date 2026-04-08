@@ -4,32 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
 
 	"git.zluudg.se/piplup/internal/api"
 	"git.zluudg.se/piplup/internal/app"
+	"git.zluudg.se/piplup/internal/cert"
 	"git.zluudg.se/piplup/internal/common"
 	"git.zluudg.se/piplup/internal/logger"
 )
+
+const c_APP_IDENTIFIER = "piplup"
 
 /* Rewritten if building with make */
 var version = "BAD-BUILD"
 var commit = "BAD-BUILD"
 
 type conf struct {
-	Address         string   `json:"address"`
-	UdpPort         string   `json:"udp_port"`
-	TlsPort         string   `json:"tls_port"`
-	UpstreamAddress string   `json:"upstream_address"`
-	UpstreamPort    string   `json:"upstream_port"`
-	Inject          string   `json:"inject"`
-	MatchSuffix     string   `json:"match_suffix"`
-	CertDir         string   `json:"cert_dir"`
-	Api             api.Conf `json:"api"`
+	app.Conf
+	ApiConf  api.Conf  `json:"api"`
+	CertConf cert.Conf `json:"cert"`
 }
 
 func main() {
@@ -45,7 +41,7 @@ func main() {
 	)
 	flag.StringVar(&configFile,
 		"config",
-		"",
+		"config.json",
 		"Configuration file to use",
 	)
 	flag.BoolVar(&debugFlag,
@@ -55,13 +51,10 @@ func main() {
 	)
 	flag.Parse()
 
-	log, err := logger.Create(
+	log := logger.New(
 		logger.Conf{
 			Debug: debugFlag,
 		})
-	if err != nil {
-		panic(fmt.Sprintf("Could not create logger, err: '%s'", err))
-	}
 
 	log.Info("piplup version: '%s', commit: '%s'", version, commit)
 	if runVersionCmd {
@@ -80,6 +73,7 @@ func main() {
 		log.Error("Couldn't open config file '%s', exiting...", configFile)
 		os.Exit(-1)
 	}
+	defer file.Close()
 
 	confDecoder := json.NewDecoder(file)
 	if confDecoder == nil {
@@ -88,67 +82,103 @@ func main() {
 	}
 
 	confDecoder.DisallowUnknownFields()
-	confDecoder.Decode(&mainConf)
+	err = confDecoder.Decode(&mainConf)
+	if err != nil {
+		log.Error("Problem decoding config file '%s': %s", configFile, err)
+		os.Exit(-1)
+	}
 
-	application, err := app.NewBuilder().
-		Logger(log).
-		Address(mainConf.Address).
-		UdpPort(mainConf.UdpPort).
-		TlsPort(mainConf.TlsPort).
-		Upstream(mainConf.UpstreamAddress, mainConf.UpstreamPort).
-		CertDir(mainConf.CertDir).
-		MatchSuffix(mainConf.MatchSuffix).
-		Inject(mainConf.Inject).
-		Build()
+	mainConf.Debug = mainConf.Debug || debugFlag
+	mainConf.CertConf.Debug = mainConf.CertConf.Debug || debugFlag
+
+	/*
+	 ******************************************************************
+	 ********************** SET UP CERT *******************************
+	 ******************************************************************
+	 */
+	certHandle, err := cert.Create(mainConf.CertConf)
+	if err != nil {
+		log.Error("Error creating cert handler: '%s'", err)
+		os.Exit(-1)
+	}
+
+	/*
+	 ******************************************************************
+	 ********************** SET UP APP ********************************
+	 ******************************************************************
+	 */
+	mainConf.Cert = certHandle
+	appHandle, err := app.Create(mainConf.Conf)
 	if err != nil {
 		log.Error("Error creating application: '%s'", err)
 		os.Exit(-1)
 	}
 
-	mainConf.Api.Log = log
-	mainConf.Api.Application = application
-	appApi, err := api.Create(mainConf.Api)
-	if err != nil {
-		log.Error("Error creating API: '%s'", err)
-		os.Exit(-1)
-	}
+	/*
+	 ******************************************************************
+	 ********************** SET UP METRICS ****************************
+	 ******************************************************************
+	 */
+	//mainConf.Api.Application = application
+	//appApi, err := api.Create(mainConf.Api)
+	//if err != nil {
+	//	log.Error("Error creating API: '%s'", err)
+	//	os.Exit(-1)
+	//}
 
+	/*
+	 ******************************************************************
+	 ********************** START RUNNING STUFF ***********************
+	 ******************************************************************
+	 */
 	sigChan := make(chan os.Signal, 1)
-	defer close(sigChan)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer close(sigChan)
+	defer signal.Stop(sigChan)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	exitCh := make(chan common.Exit)
+	exitCh := make(chan common.Exit, 128)
 
-	go application.Run(ctx, exitCh)
+	log.Info("Starting threads...")
 
-	go appApi.Run(ctx, exitCh)
+	var wg sync.WaitGroup
+	wg.Go(func() { certHandle.Run(ctx, exitCh) })
+	wg.Go(func() { appHandle.Run(ctx, exitCh) })
 
-	exitLoop := false
+MAIN_LOOP:
 	for {
 		select {
-		case s := <-sigChan:
-			log.Info("Got signal '%s'", s)
-			exitLoop = true
-		case exit := <-exitCh:
-			if exit.Err != nil {
-				log.Error("%s exited with error: '%s'", exit.ID, exit.Err)
-				if exit.Err == common.ErrFatal {
-					exitLoop = true
+		case s, ok := <-sigChan:
+			if ok {
+				log.Info("Got signal '%s'", s)
+			} else {
+				log.Warning("Signal channel closed unexpectedly, exiting...")
+			}
+			break MAIN_LOOP
+		case exit, ok := <-exitCh:
+			if ok {
+				if exit.Err != nil {
+					log.Error("%s exited with error: '%s'", exit.ID, exit.Err)
+					if exit.Err == common.ErrFatal {
+						log.Error("%s encountered fatal error, exiting...", exit.ID)
+						break MAIN_LOOP
+					}
+				} else {
+					log.Info("%s done!", exit.ID)
 				}
 			} else {
-				log.Info("%s done!", exit.ID)
+				log.Warning("Exit channel closed unexpectedly, exiting...")
+				break MAIN_LOOP
 			}
-		}
-		if exitLoop {
-			break
 		}
 	}
 
+	log.Info("Cancelling threads")
 	cancel()
-	log.Info("Cancelling, giving threads some time to finish...")
-	time.Sleep(2 * time.Second)
-	close(exitCh)
+
+	log.Info("Waiting for threads to finish")
+	wg.Wait()
+
 	log.Info("Exiting...")
 	os.Exit(0)
 }

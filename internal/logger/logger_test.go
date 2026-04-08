@@ -4,29 +4,6 @@ import (
 	"testing"
 )
 
-func TestLoggingCreateNoError(t *testing.T) {
-	var tests = []struct {
-		name     string
-		indata   bool
-		expected error
-	}{
-		{"true", true, nil},
-		{"false", false, nil},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			conf := Conf{
-				Debug: tt.indata,
-			}
-			_, got := Create(conf)
-			if got != tt.expected {
-				t.Fatalf("got %q, expected %q", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestLoggingFormat(t *testing.T) {
 	var tests = []struct {
 		name           string
@@ -64,7 +41,7 @@ func TestLoggingDebugNoPanic(t *testing.T) {
 			conf := Conf{
 				Debug: tt.indata,
 			}
-			l, _ := Create(conf)
+			l := New(conf)
 			l.Debug("nothing")
 		})
 	}
@@ -85,7 +62,7 @@ func TestLoggingInfoNoPanic(t *testing.T) {
 			conf := Conf{
 				Debug: tt.indata,
 			}
-			l, _ := Create(conf)
+			l := New(conf)
 			l.Info("nothing")
 		})
 	}
@@ -106,7 +83,7 @@ func TestLoggingWarningNoPanic(t *testing.T) {
 			conf := Conf{
 				Debug: tt.indata,
 			}
-			l, _ := Create(conf)
+			l := New(conf)
 			l.Warning("nothing")
 		})
 	}
@@ -127,7 +104,7 @@ func TestLoggingErrorNoPanic(t *testing.T) {
 			conf := Conf{
 				Debug: tt.indata,
 			}
-			l, _ := Create(conf)
+			l := New(conf)
 			l.Error("nothing")
 		})
 	}

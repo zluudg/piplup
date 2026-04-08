@@ -17,7 +17,7 @@ type Conf struct {
 	Debug bool
 }
 
-func Create(conf Conf) (*logger, error) {
+func New(conf Conf) *logger {
 	newLogger := new(logger)
 	var programLevel = new(slog.LevelVar) // Info by default
 
@@ -32,7 +32,7 @@ func Create(conf Conf) (*logger, error) {
 	newLogger.logger = l
 	newLogger.conf = conf
 
-	return newLogger, nil
+	return newLogger
 }
 
 func (l logger) Debug(fmtStr string, vals ...any) {
