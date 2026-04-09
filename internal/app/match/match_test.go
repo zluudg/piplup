@@ -1,22 +1,22 @@
 package match
 
 import (
-    "testing"
+	"testing"
 
-    //miekg "codeberg.org/miekg/dns"
+	//miekg "codeberg.org/miekg/dns"
 
-    "git.zluudg.se/piplup/internal/common"
+	"git.zluudg.se/piplup/internal/common"
 )
 
 func TestCreate_BadConf(t *testing.T) {
-    mconf := Conf {}
+	mconf := Conf{}
 
 	_, err := Create(mconf)
 
-    expected := common.ErrBadParam
-    if err != expected {
-        t.Logf("Expected: %s, Got: %s", expected, err)
-    }
+	expected := common.ErrBadParam
+	if err != expected {
+		t.Logf("Expected: %s, Got: %s", expected, err)
+	}
 }
 
 //func TestIsMatch_ResponseMismatch(t *testing.T) {

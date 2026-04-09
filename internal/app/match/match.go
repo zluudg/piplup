@@ -16,6 +16,21 @@ type Conf struct {
 	ActionID string  `json:"action"`
 }
 
+func (c Conf) String() string {
+	qnameRepr := "<NONE>"
+	qtypeRepr := "<NONE>"
+
+	if c.Qname != nil {
+		qnameRepr = *c.Qname
+	}
+
+	if c.Qtype != nil {
+		qtypeRepr = *c.Qtype
+	}
+
+	return fmt.Sprintf("%s/%s", qnameRepr, qtypeRepr)
+}
+
 type Match struct {
 	regex    *regexp.Regexp
 	qtype    *uint16
@@ -28,10 +43,6 @@ func Create(conf Conf) (*Match, error) {
 	qnameRepr := "<NONE>"
 	qtypeRepr := "<NONE>"
 	m := new(Match)
-
-	if conf.Qname == nil && conf.Qtype == nil {
-		return nil, common.ErrBadParam
-	}
 
 	if conf.Qname != nil {
 		m.regex, err = regexp.Compile(*conf.Qname)
@@ -89,4 +100,8 @@ func (m *Match) IsMatch(msg *miekg.Msg) bool {
 	}
 
 	return isMatch
+}
+
+func (m *Match) ActionID() string {
+	return m.actionID
 }

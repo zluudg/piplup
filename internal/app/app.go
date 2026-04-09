@@ -7,20 +7,24 @@ import (
 
 	miekg "codeberg.org/miekg/dns"
 
+	"git.zluudg.se/piplup/internal/app/action"
 	"git.zluudg.se/piplup/internal/app/match"
 	"git.zluudg.se/piplup/internal/common"
 	"git.zluudg.se/piplup/internal/logger"
 )
 
+const c_DEFAULT_ACTION = "{{DEFAULT}}"
+
 type Conf struct {
-	Debug             bool         `json:"debug"`
-	Address           string       `json:"address"`
-	UdpPort           string       `json:"udp_port"`
-	TlsPort           string       `json:"tls_port"`
-	UpstreamAddress   string       `json:"upstream_address"`
-	UpstreamPort      string       `json:"upstream_port"`
-	UpstreamTransport string       `json:"upstream_transport"`
-	Matches           []match.Conf `json:"matches"`
+	Debug             bool          `json:"debug"`
+	Address           string        `json:"address"`
+	UdpPort           string        `json:"udp_port"`
+	TlsPort           string        `json:"tls_port"`
+	UpstreamAddress   string        `json:"upstream_address"`
+	UpstreamPort      string        `json:"upstream_port"`
+	UpstreamTransport string        `json:"upstream_transport"`
+	Actions           []action.Conf `json:"actions"`
+	Matches           []match.Conf  `json:"matches"`
 	Log               common.Logger
 	Cert              common.CertHandler
 }
@@ -37,6 +41,7 @@ type appHandle struct {
 	upstreamTransport string
 	matchIncoming     []*match.Match
 	matchOutgoing     []*match.Match
+	actions           map[string]action.Action
 }
 
 func Create(c Conf) (*appHandle, error) {
@@ -96,13 +101,40 @@ func Create(c Conf) (*appHandle, error) {
 	}
 	a.upstreamTransport = c.UpstreamTransport
 
+	a.actions = make(map[string]action.Action)
+	for _, aconf := range c.Actions {
+		ac, err := action.Create(aconf)
+		if err != nil {
+			a.log.Error("Could not create action '%s': %s", aconf.ID, err)
+			return nil, common.ErrBadParam
+		}
+
+		a.actions[aconf.ID] = ac
+	}
+	defaultAc, err := action.Create(action.Conf{
+		ID:      c_DEFAULT_ACTION,
+		Forward: true,
+		Kind:    "noop",
+	})
+	if err != nil {
+		a.log.Error("Could not create default action")
+		return nil, common.ErrNotCompleted
+	}
+	a.actions[c_DEFAULT_ACTION] = defaultAc
+
 	a.matchIncoming = make([]*match.Match, 0)
 	a.matchOutgoing = make([]*match.Match, 0)
 	for _, mconf := range c.Matches {
-		// TODO check consistency with action ID's and Valid qtypes
+		_, ok := a.actions[mconf.ActionID]
+		if !ok {
+			a.log.Error("Match referenced unrecognized action '%s'", mconf.ActionID)
+			return nil, common.ErrBadParam
+		}
+
 		m, err := match.Create(mconf)
 		if err != nil {
-			a.log.Error("Could not create match object '%s/%s'", *mconf.Qname, *mconf.Qtype)
+			a.log.Error("Could not create match object '%s'", mconf.String())
+			return nil, common.ErrBadParam
 		}
 		if mconf.Outgoing {
 			a.matchOutgoing = append(a.matchOutgoing, m)
@@ -110,6 +142,15 @@ func Create(c Conf) (*appHandle, error) {
 			a.matchIncoming = append(a.matchIncoming, m)
 		}
 	}
+	matchDefault, err := match.Create(match.Conf{
+		ActionID: c_DEFAULT_ACTION,
+	})
+	if err != nil {
+		a.log.Error("Could not create default match pattern")
+		return nil, common.ErrNotCompleted
+	}
+	a.matchOutgoing = append(a.matchOutgoing, matchDefault)
+	a.matchIncoming = append(a.matchIncoming, matchDefault)
 
 	a.log.Info("%d incoming match patterns configured", len(a.matchIncoming))
 	a.log.Info("%d outgoing match patterns configured", len(a.matchOutgoing))
@@ -165,50 +206,102 @@ func (a *appHandle) Run(ctx context.Context, exitCh chan<- common.Exit) {
 func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *miekg.Msg) {
 	a.log.Debug("Query for %s incoming", r.Question[0].Header().Name)
 	var err error
-
-	for _, m := range a.matchIncoming {
-		if m.IsMatch(r) {
-			a.log.Info("Matched incoming pattern %s", m.String()) // TODO remove
-			break
-		}
-	}
+	var chosenIncAction action.Action
+	var chosenOutAction action.Action
 
 	resp := new(miekg.Msg)
-	resp.Question = r.Question
-	resp.MsgHeader.ID = r.MsgHeader.ID
-	resp.MsgHeader.Response = true
-	resp.MsgHeader.Opcode = miekg.OpcodeQuery
-	resp.MsgHeader.Authoritative = true
-	resp.MsgHeader.Rcode = miekg.RcodeRefused
 
-	newQ := r
-	upResp, err := miekg.Exchange(ctx, newQ, a.upstreamTransport, net.JoinHostPort(a.upstreamAddress, a.upstreamPort))
-	if err != nil {
-		if err != nil {
-			a.log.Error("Error from upsream DNS: %s", err)
+	for _, m := range a.matchIncoming {
+		if !m.IsMatch(r) {
+			continue
 		}
-		_, err = resp.WriteTo(w) // TODO return some error msg here instead?
-		if err != nil {
-			a.log.Error("Error responding after failed upstream: %s", err)
-		}
-		return
-	}
+		a.log.Debug("Matched incoming pattern %s", m.String())
 
-	resp.Answer = upResp.Answer
-	resp.Ns = upResp.Ns
-	resp.Extra = upResp.Extra
-	resp.MsgHeader.Rcode = upResp.MsgHeader.Rcode
-
-	for _, m := range a.matchOutgoing {
-		if m.IsMatch(upResp) {
-			a.log.Info("Matched outgoing pattern %s", m.String()) // TODO remove
+		ac, ok := a.actions[m.ActionID()]
+		if !ok {
+			a.log.Error("Invalid Action ID for match '%s'", m.String())
 			break
 		}
+
+		chosenIncAction = ac
+		break
 	}
 
-	_, err = resp.WriteTo(w)
+	if chosenIncAction == nil {
+		panic("No action found for match")
+	}
+
+	incProcessed, err := chosenIncAction.Apply(r)
 	if err != nil {
-		a.log.Error("Error responding after succesful upstream: %s", err)
+		a.log.Error("Could not apply action: %s, dropping...", err)
+		return
+	} else {
+		a.log.Debug("Succesfully applied action %s on incoming match", chosenIncAction.ID())
+	}
+
+	writeRaw := false
+	if chosenIncAction.DoForward() {
+		upResp, err := miekg.Exchange(ctx, incProcessed, a.upstreamTransport, net.JoinHostPort(a.upstreamAddress, a.upstreamPort))
+		if err != nil {
+			if err != nil {
+				a.log.Error("Error from upsream DNS: %s", err)
+			}
+			_, err = resp.WriteTo(w) // TODO return some error msg here instead?
+			if err != nil {
+				a.log.Error("Error responding after failed upstream: %s", err)
+			}
+			return
+		}
+
+		resp.Answer = upResp.Answer
+		resp.Ns = upResp.Ns
+		resp.Extra = upResp.Extra
+		resp.MsgHeader.Rcode = upResp.MsgHeader.Rcode
+
+		for _, m := range a.matchOutgoing {
+			if m.IsMatch(upResp) {
+				a.log.Info("Matched outgoing pattern %s", m.String()) // TODO remove
+				break
+			}
+			ac, ok := a.actions[m.ActionID()]
+			if !ok {
+				a.log.Error("Invalid Action ID for match '%s'", m.String())
+				break
+			}
+
+			chosenOutAction = ac
+			break
+		}
+
+		if chosenOutAction == nil {
+			panic("No action found for match")
+		}
+
+		outProcessed, err := chosenOutAction.Apply(upResp)
+		if err != nil {
+			a.log.Error("Could not apply action: %s, dropping...", err)
+			return
+		} else {
+			a.log.Debug("Succesfully applied action %s on outgoing match", chosenOutAction.ID())
+		}
+
+		resp = outProcessed
+		writeRaw = chosenOutAction.WriteRaw()
+	} else {
+		resp = incProcessed
+		writeRaw = chosenIncAction.WriteRaw()
+	}
+
+	if writeRaw {
+		_, err := w.Write(resp.Data)
+		if err != nil {
+			a.log.Error("Error sending raw response: %s", err)
+		}
+	} else {
+		_, err = resp.WriteTo(w)
+		if err != nil {
+			a.log.Error("Error sending response: %s", err)
+		}
 	}
 	return
 }

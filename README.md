@@ -16,6 +16,25 @@
         "key": "/path/to/key.pem",
         "cert": "/path/to/cert.pem"
     },
+    "actions":
+    [
+        {
+            "id": "action1",
+            "kind": "noop",
+            "forward": true
+        },
+        {
+            "id": "action2",
+            "kind": "noop",
+            "inject_data":
+            [
+                {
+                    "rdata": "injected.xa. 60 IN TXT \"action2\"",
+                    "section": "additional"
+                }
+            ]
+        }
+    ],
     "matches":
     [
         {
