@@ -8,6 +8,7 @@ import (
 
 const c_ACTION_NOOP = "noop"
 const c_ACTION_GARBAGE = "garbage"
+const c_ACTION_INJECT = "inject"
 
 type Conf struct {
 	ID      string           `json:"id"`
@@ -27,7 +28,6 @@ type createActionFn func(Conf) (Action, error)
 type Action interface {
 	Apply(*miekg.Msg) (*miekg.Msg, error)
 	DoForward() bool
-	WriteRaw() bool
 	ID() string
 }
 
@@ -43,6 +43,7 @@ func (ab *actionBase) ID() string {
 var c_CREATE_DISPATCH map[string]createActionFn = map[string]createActionFn{
 	c_ACTION_NOOP:    createNoopAction,
 	c_ACTION_GARBAGE: createGarbageAction,
+	c_ACTION_INJECT:  createInjectAction,
 }
 
 func Create(conf Conf) (Action, error) {

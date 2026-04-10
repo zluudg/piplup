@@ -1,6 +1,11 @@
 package action
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
+	"math/rand/v2"
+	"slices"
+
 	miekg "codeberg.org/miekg/dns"
 )
 
@@ -9,19 +14,31 @@ type garbageAction struct {
 }
 
 func createGarbageAction(conf Conf) (Action, error) {
-	panic("not impl")
-	return new(garbageAction), nil
+	ac := new(garbageAction)
+	ac.id = conf.ID
+	ac.forward = conf.Forward
+
+	return ac, nil
 }
 
 func (a *garbageAction) Apply(msg *miekg.Msg) (*miekg.Msg, error) {
-	panic("not impl")
-	return msg, nil
+	outMsg := new(miekg.Msg)
+
+	txID := make([]byte, 2)
+	binary.BigEndian.PutUint16(txID, msg.MsgHeader.ID)
+
+	data := make([]byte, rand.IntN(1200))
+
+	_, err := crand.Read(data)
+	if err != nil {
+		return nil, err
+	}
+
+	outMsg.Data = slices.Concat(txID, data)
+
+	return outMsg, nil
 }
 
 func (a *garbageAction) DoForward() bool {
-	return true
-}
-
-func (a *garbageAction) WriteRaw() bool {
-	return true
+	return a.forward
 }

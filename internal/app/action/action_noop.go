@@ -22,7 +22,3 @@ func (a *noopAction) Apply(msg *miekg.Msg) (*miekg.Msg, error) {
 func (a *noopAction) DoForward() bool {
 	return a.forward
 }
-
-func (a *noopAction) WriteRaw() bool {
-	return false
-}

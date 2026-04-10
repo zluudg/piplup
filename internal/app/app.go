@@ -13,7 +13,7 @@ import (
 	"git.zluudg.se/piplup/internal/logger"
 )
 
-const c_DEFAULT_ACTION = "{{DEFAULT}}"
+const c_DEFAULT_ACTION = "<DEFAULT>"
 
 type Conf struct {
 	Debug             bool          `json:"debug"`
@@ -220,7 +220,7 @@ func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *mie
 		ac, ok := a.actions[m.ActionID()]
 		if !ok {
 			a.log.Error("Invalid Action ID for match '%s'", m.String())
-			break
+			return
 		}
 
 		chosenIncAction = ac
@@ -236,11 +236,10 @@ func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *mie
 		a.log.Error("Could not apply action: %s, dropping...", err)
 		return
 	} else {
-		a.log.Debug("Succesfully applied action %s on incoming match", chosenIncAction.ID())
+		a.log.Debug("Successfully applied action '%s' on incoming match", chosenIncAction.ID())
 	}
 
-	writeRaw := false
-	if chosenIncAction.DoForward() {
+	if chosenIncAction.DoForward() { // TODO Maybe its the match object that should determine whether to forward?
 		upResp, err := miekg.Exchange(ctx, incProcessed, a.upstreamTransport, net.JoinHostPort(a.upstreamAddress, a.upstreamPort))
 		if err != nil {
 			if err != nil {
@@ -259,14 +258,16 @@ func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *mie
 		resp.MsgHeader.Rcode = upResp.MsgHeader.Rcode
 
 		for _, m := range a.matchOutgoing {
-			if m.IsMatch(upResp) {
-				a.log.Info("Matched outgoing pattern %s", m.String()) // TODO remove
-				break
+			if !m.IsMatch(upResp) {
+				continue
 			}
+
+			a.log.Debug("Matched outgoing pattern %s", m.String()) // TODO remove
+
 			ac, ok := a.actions[m.ActionID()]
 			if !ok {
 				a.log.Error("Invalid Action ID for match '%s'", m.String())
-				break
+				return
 			}
 
 			chosenOutAction = ac
@@ -282,26 +283,18 @@ func (a *appHandle) ServeDNS(ctx context.Context, w miekg.ResponseWriter, r *mie
 			a.log.Error("Could not apply action: %s, dropping...", err)
 			return
 		} else {
-			a.log.Debug("Succesfully applied action %s on outgoing match", chosenOutAction.ID())
+			a.log.Debug("Successfully applied action '%s' on outgoing match", chosenOutAction.ID())
 		}
 
 		resp = outProcessed
-		writeRaw = chosenOutAction.WriteRaw()
 	} else {
 		resp = incProcessed
-		writeRaw = chosenIncAction.WriteRaw()
 	}
 
-	if writeRaw {
-		_, err := w.Write(resp.Data)
-		if err != nil {
-			a.log.Error("Error sending raw response: %s", err)
-		}
-	} else {
-		_, err = resp.WriteTo(w)
-		if err != nil {
-			a.log.Error("Error sending response: %s", err)
-		}
+	_, err = resp.WriteTo(w)
+	if err != nil {
+		a.log.Error("Error sending response: %s", err)
 	}
+
 	return
 }
