@@ -78,6 +78,10 @@ func (m *Match) String() string {
 func (m *Match) IsMatch(msg *miekg.Msg) bool {
 	isMatch := true
 
+	if m.qtype == nil && m.regex == nil {
+		return true
+	}
+
 	if len(msg.Question) == 0 {
 		return false
 	}
