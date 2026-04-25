@@ -16,7 +16,7 @@ type garbageAction struct {
 func createGarbageAction(conf Conf) (Action, error) {
 	ac := new(garbageAction)
 	ac.id = conf.ID
-	ac.forward = conf.Forward
+	ac.isChainable = false
 
 	return ac, nil
 }
@@ -37,8 +37,4 @@ func (a *garbageAction) Apply(msg *miekg.Msg) (*miekg.Msg, error) {
 	outMsg.Data = slices.Concat(txID, data)
 
 	return outMsg, nil
-}
-
-func (a *garbageAction) DoForward() bool {
-	return a.forward
 }

@@ -6,36 +6,15 @@ import (
 
 	miekg "codeberg.org/miekg/dns"
 
+	"git.zluudg.se/piplup/internal/app/action"
 	"git.zluudg.se/piplup/internal/common"
 )
 
-type Conf struct {
-	Qname    *string `json:"qname"`
-	Qtype    *string `json:"qtype"`
-	Outgoing bool    `json:"match_outgoing"`
-	ActionID string  `json:"action"`
-}
-
-func (c Conf) String() string {
-	qnameRepr := "<NONE>"
-	qtypeRepr := "<NONE>"
-
-	if c.Qname != nil {
-		qnameRepr = *c.Qname
-	}
-
-	if c.Qtype != nil {
-		qtypeRepr = *c.Qtype
-	}
-
-	return fmt.Sprintf("%s/%s", qnameRepr, qtypeRepr)
-}
-
 type Match struct {
-	regex    *regexp.Regexp
-	qtype    *uint16
-	actionID string
-	str      string
+	regex   *regexp.Regexp
+	qtype   *uint16
+	actions []action.Action
+	str     string
 }
 
 func Create(conf Conf) (*Match, error) {
@@ -61,10 +40,10 @@ func Create(conf Conf) (*Match, error) {
 		qtypeRepr = *conf.Qtype
 	}
 
-	if conf.ActionID == "" {
+	if len(conf.Actions) == 0 {
 		return nil, common.ErrBadParam
 	}
-	m.actionID = conf.ActionID
+	m.actions = conf.Actions
 
 	m.str = fmt.Sprintf("%s/%s", qnameRepr, qtypeRepr)
 
@@ -106,6 +85,6 @@ func (m *Match) IsMatch(msg *miekg.Msg) bool {
 	return isMatch
 }
 
-func (m *Match) ActionID() string {
-	return m.actionID
+func (m *Match) Actions() []string {
+	return m.actions
 }

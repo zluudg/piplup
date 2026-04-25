@@ -41,7 +41,6 @@ type appHandle struct {
 	upstreamTransport string
 	matchIncoming     []*match.Match
 	matchOutgoing     []*match.Match
-	actions           map[string]action.Action
 }
 
 func Create(c Conf) (*appHandle, error) {
@@ -101,30 +100,48 @@ func Create(c Conf) (*appHandle, error) {
 	}
 	a.upstreamTransport = c.UpstreamTransport
 
-	a.actions = make(map[string]action.Action)
+    // TODO create all actions instead
+    actionConfMap := make(map[string]action.Action)
 	for _, aconf := range c.Actions {
-		ac, err := action.Create(aconf)
-		if err != nil {
-			a.log.Error("Could not create action '%s': %s", aconf.ID, err)
-			return nil, common.ErrBadParam
-		}
+        if aconf.ID == c_DEFAULT_ACTION {
+            a.log.Error("Illegal action name %q", aconf.ID)
+            return nil, common.ErrBadParam
+        }
 
-		a.actions[aconf.ID] = ac
+		actionConfMap[aconf.ID] = aconf
 	}
-	defaultAc, err := action.Create(action.Conf{
+    defaultActionConf := action.Conf {
 		ID:      c_DEFAULT_ACTION,
-		Forward: true,
-		Kind:    "noop",
-	})
-	if err != nil {
-		a.log.Error("Could not create default action")
-		return nil, common.ErrNotCompleted
+		Kind:    "noop", // TODO make "reject"
 	}
-	a.actions[c_DEFAULT_ACTION] = defaultAc
+	actionConfMap[defaultActionConf.ID] = defaultActionConf
 
 	a.matchIncoming = make([]*match.Match, 0)
 	a.matchOutgoing = make([]*match.Match, 0)
 	for _, mconf := range c.Matches {
+        err := a.initMatch(mconf, actionConfMap)
+        if err != nil {
+            a.log.Error("Could not create match: %s", err)
+            return nil, common.ErrBadParam
+        }
+	}
+	matchDefault, err := match.Create(match.Conf{
+		ActionID: c_DEFAULT_ACTION,
+	})
+	if err != nil {
+		a.log.Error("Could not create default match pattern")
+		return nil, common.ErrNotCompleted
+	}
+	a.matchOutgoing = append(a.matchOutgoing, matchDefault)
+	a.matchIncoming = append(a.matchIncoming, matchDefault)
+
+	a.log.Info("%d incoming match patterns configured", len(a.matchIncoming))
+	a.log.Info("%d outgoing match patterns configured", len(a.matchOutgoing))
+
+	return a, nil
+}
+
+func (a *appHandle) initMatch(mconf match.Conf, aconfMap map[string]action.Conf) error {
 		_, ok := a.actions[mconf.ActionID]
 		if !ok {
 			a.log.Error("Match referenced unrecognized action '%s'", mconf.ActionID)
@@ -141,21 +158,6 @@ func Create(c Conf) (*appHandle, error) {
 		} else {
 			a.matchIncoming = append(a.matchIncoming, m)
 		}
-	}
-	matchDefault, err := match.Create(match.Conf{
-		ActionID: c_DEFAULT_ACTION,
-	})
-	if err != nil {
-		a.log.Error("Could not create default match pattern")
-		return nil, common.ErrNotCompleted
-	}
-	a.matchOutgoing = append(a.matchOutgoing, matchDefault)
-	a.matchIncoming = append(a.matchIncoming, matchDefault)
-
-	a.log.Info("%d incoming match patterns configured", len(a.matchIncoming))
-	a.log.Info("%d outgoing match patterns configured", len(a.matchOutgoing))
-
-	return a, nil
 }
 
 func (a *appHandle) Run(ctx context.Context, exitCh chan<- common.Exit) {
