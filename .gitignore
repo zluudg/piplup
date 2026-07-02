@@ -19,3 +19,6 @@ itests/sut/*
 
 # Ignore COMMIT file used for tarballs
 COMMIT
+
+# Ignore vendoring
+vendor/
