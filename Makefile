@@ -3,7 +3,7 @@ NAME:=piplup
 #######################################
 # VERSION SOURCE OF TRUTH FOR PROJECT #
 #######################################
-VERSION:=0.0.1
+VERSION:=0.0.0
 
 OUT:=./out
 DEFAULT_INSTALLDIR:=/usr/bin
